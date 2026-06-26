@@ -10,9 +10,7 @@ using System.Windows.Forms;
 
 namespace ReservoirMonitorApp
 {
-    // =========================================================================
-    // 1. DATA MODELS
-    // =========================================================================
+    //data format
     public class ReservoirRecord
     {
         [JsonPropertyName("reservoiridentifier")]
@@ -31,57 +29,46 @@ namespace ReservoirMonitorApp
         public double Capacity => double.TryParse(CapacityRaw, out var value) ? value : 0.0;
     }
 
-    // =========================================================================
-    // 2. BUSINESS LOGIC / SERVICE LAYER (Separation of Concerns)
-    // =========================================================================
+    //data fetching and filtering
     public class TelemetryService
     {
+        private const string FolderName = "data";
         private const string FileName = "response_1781533209388.json";
-
-        /// <summary>
-        /// Fetches, parses, and filters reservoir telemetry data.
-        /// </summary>
         public async Task<List<ReservoirRecord>> GetLargeReservoirsAsync()
         {
-            string filePath = Path.Combine(AppContext.BaseDirectory, FileName);
-
+            //data fetching
+            string filePath = Path.Combine(AppContext.BaseDirectory,FolderName, FileName);
             if (!File.Exists(filePath))
             {
                 throw new FileNotFoundException($"Telemetry configuration file missing.");
             }
-
             string jsonPayload = await File.ReadAllTextAsync(filePath);
             var records = JsonSerializer.Deserialize<List<ReservoirRecord>>(jsonPayload);
-
+            
             if (records == null || records.Count == 0)
             {
                 return new List<ReservoirRecord>();
             }
 
-            // Keep business logic processing out of the UI Layer
+            //data filtering
             return records
-                .Where(r => r.Capacity > 10000.0)
+                .Where(r => r.Capacity > 5000.0)
                 .OrderByDescending(r => r.Capacity)
                 .ToList();
         }
     }
 
-    // =========================================================================
-    // 3. USER INTERFACE LAYER (Modern Flat Design Style)
-    // =========================================================================
+    //UI
     public class MainForm : Form
     {
         private Panel pnlHeader;
         private Label lblHeaderTitle;
         private Label lblHeaderSubtitle;
         private DataGridView dgvReservoirs;
-        
         private readonly TelemetryService _telemetryService;
-
         public MainForm()
         {
             _telemetryService = new TelemetryService();
-            
             InitializeComponent();
             ApplyModernTheme();
             ConfigureDataGridColumns();
@@ -89,18 +76,18 @@ namespace ReservoirMonitorApp
 
         private void InitializeComponent()
         {
-            // Form Setup
+            //form setup
             this.Text = "Reservoir Telemetry Monitor";
             this.Size = new Size(800, 600);
             this.StartPosition = FormStartPosition.CenterScreen;
-            this.MinimumSize = new Size(800, 600);
+            this.MinimumSize = new Size(400, 300);
 
-            // 1. Header Panel (Acts as a visual anchor)
+            //header
             pnlHeader = new Panel
             {
                 Dock = DockStyle.Top,
-                Height = 170,
-                BackColor = Color.FromArgb(31, 41, 55), // Dark Slate/Charcoal
+                Height = 70,
+                BackColor = Color.FromArgb(31, 41, 55),
                 Padding = new Padding(15, 12, 15, 12)
             };
 
@@ -115,17 +102,16 @@ namespace ReservoirMonitorApp
 
             lblHeaderSubtitle = new Label
             {
-                Text = "Loading local telemetry matrix...",
+                Text = "Loading local telemetry...",
                 Dock = DockStyle.Bottom,
                 Font = new Font("Segoe UI", 9F, FontStyle.Regular),
-                ForeColor = Color.FromArgb(255, 163, 175), // Soft gray text
+                ForeColor = Color.FromArgb(156, 163, 175),
                 AutoSize = true
             };
             pnlHeader.Controls.Add(lblHeaderSubtitle);
             pnlHeader.Controls.Add(lblHeaderTitle);
             
-
-            // 2. Tabular Data Grid
+            //data grid
             dgvReservoirs = new DataGridView
             {
                 Dock = DockStyle.Fill,
@@ -137,51 +123,50 @@ namespace ReservoirMonitorApp
                 MultiSelect = false,
                 BackgroundColor = Color.White,
                 BorderStyle = BorderStyle.None,
-                GridColor = Color.FromArgb(243, 244, 246), // Ultra-light border lines
-                EnableHeadersVisualStyles = false // Required to apply custom header colors
+                GridColor = Color.FromArgb(243, 244, 246),
+                EnableHeadersVisualStyles = false
             };
 
-            // Add UI Controls to Form
+            //append grid and header in order
             this.Controls.Add(dgvReservoirs);
             this.Controls.Add(pnlHeader);
-            
-             // Added second so Top dock lays out correctly against Fill
         }
 
         private void ApplyModernTheme()
         {
-            // Style the DataGrid Headers to look modern and flat
+            //style of the grid header
             dgvReservoirs.ColumnHeadersDefaultCellStyle = new DataGridViewCellStyle
             {
                 BackColor = Color.FromArgb(243, 244, 246),
-                ForeColor = Color.FromArgb(255, 65, 81),
+                ForeColor = Color.FromArgb(55, 65, 81),
                 Font = new Font("Segoe UI", 9.5F, FontStyle.Bold),
                 SelectionBackColor = Color.FromArgb(243, 244, 246),
-                Alignment = DataGridViewContentAlignment.MiddleRight,
-                Padding = new Padding(8, 10, 8, 0)
+                Alignment = DataGridViewContentAlignment.MiddleLeft,
+                Padding = new Padding(8, 2, 8, 2)
             };
             dgvReservoirs.ColumnHeadersHeight = 38;
             dgvReservoirs.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
 
-            // Style the DataGrid Rows
+            //style of the grid
             dgvReservoirs.DefaultCellStyle = new DataGridViewCellStyle
             {
-                BackColor = Color.Green,
+                BackColor = Color.White,
                 ForeColor = Color.FromArgb(31, 41, 55),
                 Font = new Font("Segoe UI", 9F, FontStyle.Regular),
-                SelectionBackColor = Color.FromArgb(239, 246, 255), // Soft modern light-blue highlight
+                SelectionBackColor = Color.FromArgb(239, 246, 255),
                 SelectionForeColor = Color.FromArgb(29, 78, 216),
                 Padding = new Padding(8, 0, 8, 0)
             };
             dgvReservoirs.RowTemplate.Height = 32;
 
-            // Alternating row background for optimal readability
+            //style of the alternating row
             dgvReservoirs.AlternatingRowsDefaultCellStyle = new DataGridViewCellStyle
             {
-                BackColor = Color.FromArgb(49, 250, 51)
+                BackColor = Color.FromArgb(249, 250, 251)
             };
+            
         }
-
+        //content of the column
         private void ConfigureDataGridColumns()
         {
             dgvReservoirs.AutoGenerateColumns = false;
@@ -199,30 +184,28 @@ namespace ReservoirMonitorApp
                 DataPropertyName = "ReservoirName",
                 HeaderText = "Reservoir Name",
                 Width = 200,
-                DefaultCellStyle = { Alignment = DataGridViewContentAlignment.MiddleLeft }
+                DefaultCellStyle = {Alignment = DataGridViewContentAlignment.MiddleLeft}
             });
 
             dgvReservoirs.Columns.Add(new DataGridViewTextBoxColumn
             {
                 DataPropertyName = "Capacity",
                 HeaderText = "Capacity (10⁴ m³)",
-                AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill, // Fill remaining space dynamically
+                AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
                 DefaultCellStyle = 
                 { 
                     Alignment = DataGridViewContentAlignment.MiddleRight,
-                    Format = "N20" 
+                    Format = "N2" 
                 }
             });
         }
-
+        //data loading
         protected override async void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
             this.UseWaitCursor = true;
-
             try
             {
-                // UI layer relies safely on the service layer to pull data
                 var processedRecords = await _telemetryService.GetLargeReservoirsAsync();
 
                 if (!processedRecords.Any())
@@ -231,15 +214,13 @@ namespace ReservoirMonitorApp
                     return;
                 }
 
-                // Update UI Information cleanly
                 lblHeaderSubtitle.Text = $"Snapshot Time: {processedRecords.First().DatewTime} | Heavy Capacities Filtered ({processedRecords.Count} stations)";
                 dgvReservoirs.DataSource = processedRecords;
             }
             catch (Exception ex)
             {
-                lblHeaderSubtitle.Text = "System Fault: Telemetry initialization failed.";
-                MessageBox.Show($"An error occurred while building the telemetry cache:\n{ex.Message}", 
-                    "Application Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                lblHeaderSubtitle.Text = "Telemetry initialization failed.";
+                MessageBox.Show($"An error occurred:\n{ex.Message}","Application Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
             finally
             {
@@ -248,9 +229,7 @@ namespace ReservoirMonitorApp
         }
     }
 
-    // =========================================================================
-    // 4. RUNTIME BOOTSTRAP ENTRY
-    // =========================================================================
+    //main
     public static class Program
     {
         [STAThread]
