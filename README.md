@@ -8,7 +8,7 @@ Runtime: .NET 8.0
 Framework: WinForms
 
 📁 Project Structure
-
+```text
 ReservoirDesktopApp/
 │
 ├── data/                               # Target runtime directory for local telemetry storage
