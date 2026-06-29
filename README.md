@@ -9,8 +9,6 @@ Framework: WinForms
 
 📁 Project Structure
 ```text
-ReservoirDesktopApp/
-│
 ├── data/                               # Target runtime directory for local telemetry storage
 ├── Form1.Designer.cs                   # Windows Forms auto-generated layout metadata
 ├── Form1.cs                            # UI Grid layout and event logic
