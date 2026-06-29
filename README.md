@@ -2,8 +2,8 @@
 
 A desktop application built with C# and WinForms to monitor reservoir. 
 
-🛠️ Tech Stack & Dependencies
-
+🛠️ Tech Stack & Dependencies  
+Language: C#
 Runtime: .NET 8.0
 Framework: WinForms
 
