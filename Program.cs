@@ -10,55 +10,111 @@ using System.Windows.Forms;
 
 namespace ReservoirMonitorApp
 {
-    //data format
-    public class ReservoirRecord
+    #region JSON Layout
+    public class BasicInfoRaw
     {
         [JsonPropertyName("reservoiridentifier")]
         public string ReservoirIdentifier { get; set; } = string.Empty;
-        
+
         [JsonPropertyName("reservoirname")]
         public string ReservoirName { get; set; } = string.Empty;
 
         [JsonPropertyName("capacity")]
-        public string CapacityRaw { get; set; } = string.Empty;
+        public string Capacity { get; set; } = string.Empty;
 
         [JsonPropertyName("datetime")]
-        public string DatewTime { get; set; } = string.Empty;
-
-        [JsonIgnore]
-        public double Capacity => double.TryParse(CapacityRaw, out var value) ? value : 0.0;
+        public string DateTime { get; set; } = string.Empty;
     }
 
-    //data fetching and filtering
+    public class ObservationRaw
+    {
+        [JsonPropertyName("reservoiridentifier")]
+        public string reservoiridentifier { get; set; } = string.Empty;
+
+        [JsonPropertyName("observationtime")]
+        public string observationtime { get; set; } = string.Empty;
+
+        [JsonPropertyName("effectivewaterstoragecapacity")]
+        public string effectivewaterstoragecapacity { get; set; } = string.Empty;
+
+        [JsonPropertyName("waterlevel")]
+        public string waterlevel { get; set; } = string.Empty;
+    }
+    #endregion
+
+    #region Data format
+    // Dedicated model to ensure clean UI data-binding matching your exact requested columns
+    public class ReservoirDisplayModel
+    {
+        public string ReservoirIdentifier { get; set; } = string.Empty;
+        public string ReservoirName { get; set; } = string.Empty;
+        public double EffectiveWaterStorageCapacity { get; set; }
+        public double Capacity { get; set; }
+        public string Time { get; set; } = string.Empty;
+    }
+    #endregion
+
+    #region Fetch and Filter
     public class TelemetryService
     {
         private const string FolderName = "data";
-        private const string FileName = "response_1781533209388.json";
-        public async Task<List<ReservoirRecord>> GetLargeReservoirsAsync()
+        private const string BasicInfoFile = "response_1781533209388.json";
+        private const string ObservationsFile = "response_1782908121768.json";
+
+        public async Task<List<ReservoirDisplayModel>> GetProcessedReservoirsAsync()
         {
-            //data fetching
-            string filePath = Path.Combine(AppContext.BaseDirectory,FolderName, FileName);
-            if (!File.Exists(filePath))
+            string dataFolder = Path.Combine(AppContext.BaseDirectory, FolderName);
+            string basicPath = Path.Combine(dataFolder, BasicInfoFile);
+            string obsPath = Path.Combine(dataFolder, ObservationsFile);
+
+            if (!File.Exists(basicPath) || !File.Exists(obsPath))
             {
-                throw new FileNotFoundException($"Telemetry configuration file missing.");
-            }
-            string jsonPayload = await File.ReadAllTextAsync(filePath);
-            var records = JsonSerializer.Deserialize<List<ReservoirRecord>>(jsonPayload);
-            
-            if (records == null || records.Count == 0)
-            {
-                return new List<ReservoirRecord>();
+                throw new FileNotFoundException("Some files are missing.");
             }
 
-            //data filtering
-            return records
-                .Where(r => r.Capacity > 5000.0)
-                .OrderByDescending(r => r.Capacity)
-                .ToList();
+            string basicJsonTask = await File.ReadAllTextAsync(basicPath);
+            string obsJsonTask = await File.ReadAllTextAsync(obsPath);
+
+            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+
+            var basicRecords = JsonSerializer.Deserialize<List<BasicInfoRaw>>(basicJsonTask, options) ?? new List<BasicInfoRaw>();
+            var obsRecords = JsonSerializer.Deserialize<List<ObservationRaw>>(obsJsonTask, options) ?? new List<ObservationRaw>();
+
+            var basicMap = basicRecords
+                .GroupBy(b => b.ReservoirIdentifier)
+                .ToDictionary(g => g.Key, g => g.First());
+
+            var latestObservations = obsRecords
+                .GroupBy(o => o.reservoiridentifier)
+                .Select(g => g.OrderByDescending(o => o.observationtime).First());
+
+            var processedList = new List<ReservoirDisplayModel>();
+
+            foreach (var obs in latestObservations)
+            {
+                if (basicMap.TryGetValue(obs.reservoiridentifier, out var basic))
+                {
+                    double.TryParse(basic.Capacity, out double capacityVal);
+                    if (capacityVal <= 5000.0) continue; 
+                    double.TryParse(obs.effectivewaterstoragecapacity, out double effectiveCapVal);
+                    string displayTime = DateTime.TryParse(obs.observationtime, out var parsedDateTime)
+                                ? parsedDateTime.ToString("HH:mm") : obs.observationtime;
+                    processedList.Add(new ReservoirDisplayModel
+                    {
+                        ReservoirIdentifier = obs.reservoiridentifier,
+                        ReservoirName = basic.ReservoirName,
+                        EffectiveWaterStorageCapacity = effectiveCapVal,
+                        Capacity = capacityVal,
+                        Time = displayTime
+                    });
+                }
+            }
+            return processedList.OrderByDescending(r => r.Capacity).ToList();
         }
     }
+    #endregion
 
-    //UI
+    #region WinForms
     public class MainForm : Form
     {
         private Panel pnlHeader;
@@ -76,24 +132,22 @@ namespace ReservoirMonitorApp
 
         private void InitializeComponent()
         {
-            //form setup
-            this.Text = "Reservoir Telemetry Monitor";
-            this.Size = new Size(800, 600);
+            this.Text = "ReservoirDesktopApp";
+            this.Size = new Size(900, 600);
             this.StartPosition = FormStartPosition.CenterScreen;
-            this.MinimumSize = new Size(400, 300);
+            this.MinimumSize = new Size(500, 400);
 
-            //header
             pnlHeader = new Panel
             {
                 Dock = DockStyle.Top,
-                Height = 70,
+                Height = 75,
                 BackColor = Color.FromArgb(31, 41, 55),
                 Padding = new Padding(15, 12, 15, 12)
             };
 
             lblHeaderTitle = new Label
             {
-                Text = "TAIWAN RESERVOIR TELEMETRY",
+                Text = "Reservoir Telemetry Monitor",
                 Dock = DockStyle.Top,
                 Font = new Font("Segoe UI", 11F, FontStyle.Bold),
                 ForeColor = Color.White,
@@ -102,7 +156,7 @@ namespace ReservoirMonitorApp
 
             lblHeaderSubtitle = new Label
             {
-                Text = "Loading local telemetry...",
+                Text = "Initializing local processing streams...",
                 Dock = DockStyle.Bottom,
                 Font = new Font("Segoe UI", 9F, FontStyle.Regular),
                 ForeColor = Color.FromArgb(156, 163, 175),
@@ -110,8 +164,8 @@ namespace ReservoirMonitorApp
             };
             pnlHeader.Controls.Add(lblHeaderSubtitle);
             pnlHeader.Controls.Add(lblHeaderTitle);
-            
-            //data grid
+
+            // Data Grid Setup
             dgvReservoirs = new DataGridView
             {
                 Dock = DockStyle.Fill,
@@ -127,14 +181,12 @@ namespace ReservoirMonitorApp
                 EnableHeadersVisualStyles = false
             };
 
-            //append grid and header in order
             this.Controls.Add(dgvReservoirs);
             this.Controls.Add(pnlHeader);
         }
 
         private void ApplyModernTheme()
         {
-            //style of the grid header
             dgvReservoirs.ColumnHeadersDefaultCellStyle = new DataGridViewCellStyle
             {
                 BackColor = Color.FromArgb(243, 244, 246),
@@ -147,7 +199,6 @@ namespace ReservoirMonitorApp
             dgvReservoirs.ColumnHeadersHeight = 38;
             dgvReservoirs.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
 
-            //style of the grid
             dgvReservoirs.DefaultCellStyle = new DataGridViewCellStyle
             {
                 BackColor = Color.White,
@@ -159,14 +210,12 @@ namespace ReservoirMonitorApp
             };
             dgvReservoirs.RowTemplate.Height = 32;
 
-            //style of the alternating row
             dgvReservoirs.AlternatingRowsDefaultCellStyle = new DataGridViewCellStyle
             {
                 BackColor = Color.FromArgb(249, 250, 251)
             };
-            
         }
-        //content of the column
+
         private void ConfigureDataGridColumns()
         {
             dgvReservoirs.AutoGenerateColumns = false;
@@ -175,52 +224,63 @@ namespace ReservoirMonitorApp
             {
                 DataPropertyName = "ReservoirIdentifier",
                 HeaderText = "ID",
-                Width = 80,
-                DefaultCellStyle = { Alignment = DataGridViewContentAlignment.MiddleLeft }
+                Width = 90,
+                HeaderCell = { Style = { Alignment = DataGridViewContentAlignment.MiddleCenter } },
+                DefaultCellStyle = { Alignment = DataGridViewContentAlignment.MiddleCenter }
             });
+
+            dgvReservoirs.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                DataPropertyName = "Time",
+                HeaderText = "Time",
+                Width = 90,
+                HeaderCell = { Style = { Alignment = DataGridViewContentAlignment.MiddleCenter } },
+                DefaultCellStyle = { Alignment = DataGridViewContentAlignment.MiddleCenter }
+            });
+
 
             dgvReservoirs.Columns.Add(new DataGridViewTextBoxColumn
             {
                 DataPropertyName = "ReservoirName",
                 HeaderText = "Reservoir Name",
-                Width = 200,
-                DefaultCellStyle = {Alignment = DataGridViewContentAlignment.MiddleLeft}
+                Width = 180,
+                HeaderCell = { Style = { Alignment = DataGridViewContentAlignment.MiddleCenter } },
+                DefaultCellStyle = { Alignment = DataGridViewContentAlignment.MiddleCenter }
+            });
+
+            dgvReservoirs.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                DataPropertyName = "EffectiveWaterStorageCapacity",
+                HeaderText = "Effective Capacity (10⁴ m³)",
+                Width = 250,
+                HeaderCell = { Style = { Alignment = DataGridViewContentAlignment.MiddleCenter } },
+                DefaultCellStyle = { Alignment = DataGridViewContentAlignment.MiddleRight, Format = "N2" }
             });
 
             dgvReservoirs.Columns.Add(new DataGridViewTextBoxColumn
             {
                 DataPropertyName = "Capacity",
-                HeaderText = "Capacity (10⁴ m³)",
+                HeaderText = "Total Capacity (10⁴ m³)",
                 AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
-                DefaultCellStyle = 
-                { 
-                    Alignment = DataGridViewContentAlignment.MiddleRight,
-                    Format = "N2" 
-                }
+                HeaderCell = { Style = { Alignment = DataGridViewContentAlignment.MiddleCenter } },
+                DefaultCellStyle = { Alignment = DataGridViewContentAlignment.MiddleRight, Format = "N2" }
             });
         }
-        //data loading
+
         protected override async void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
             this.UseWaitCursor = true;
             try
             {
-                var processedRecords = await _telemetryService.GetLargeReservoirsAsync();
-
-                if (!processedRecords.Any())
-                {
-                    lblHeaderSubtitle.Text = "Telemetry Notice: Empty dataset returned.";
-                    return;
-                }
-
-                lblHeaderSubtitle.Text = $"Snapshot Time: {processedRecords.First().DatewTime} | Heavy Capacities Filtered ({processedRecords.Count} stations)";
+                var processedRecords = await _telemetryService.GetProcessedReservoirsAsync();
+                lblHeaderSubtitle.Text = $"Displaying heavy reservoir (> 5000 capacity) | Count: {processedRecords.Count}";
                 dgvReservoirs.DataSource = processedRecords;
             }
             catch (Exception ex)
             {
-                lblHeaderSubtitle.Text = "Telemetry initialization failed.";
-                MessageBox.Show($"An error occurred:\n{ex.Message}","Application Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                lblHeaderSubtitle.Text = "Data processing is failed.";
+                MessageBox.Show($"Processing error:\n{ex.Message}", "System Failure", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             finally
             {
@@ -228,8 +288,9 @@ namespace ReservoirMonitorApp
             }
         }
     }
+    #endregion
 
-    //main
+    #region Entry Point
     public static class Program
     {
         [STAThread]
@@ -239,6 +300,6 @@ namespace ReservoirMonitorApp
             Application.SetCompatibleTextRenderingDefault(false);
             Application.Run(new MainForm());
         }
-        
     }
+    #endregion
 }
